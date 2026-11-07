@@ -1,0 +1,126 @@
+{
+  "$comment": "Etiquetas en español de los enums de la API (docs/05-api-openapi.yaml). Fuente única: el backend las usa en mensajes, plantillas y exportaciones; el frontend las copia en src/lib/labels.ts. No traducir los valores de enum en la API.",
+  "Role": {
+    "ADMIN": "Administrador",
+    "RECEPCIONISTA": "Recepcionista",
+    "NUTRICIONISTA": "Nutricionista",
+    "ALUMNO": "Alumno"
+  },
+  "MemberStatus": {
+    "ACTIVE": "Activo",
+    "CANCELLED": "De baja"
+  },
+  "RenewalStatus": {
+    "OK": "Al día",
+    "DUE_7D": "Vence en ≤7 días",
+    "DUE_3D": "Vence en ≤3 días",
+    "DUE_TODAY": "Vence hoy",
+    "EXPIRED": "Vencido",
+    "UNKNOWN": "Sin clasificar",
+    "CANCELLED": "De baja"
+  },
+  "AttendanceRisk": {
+    "OK": "OK",
+    "MEDIUM": "Alerta >7 días",
+    "HIGH": "Alerta >14 días",
+    "CRITICAL": "Riesgo de baja >20 días",
+    "NO_ATTENDANCE": "Sin asistencias"
+  },
+  "MemberStatusEventType": {
+    "ACTIVATED": "Alta",
+    "CANCELLED": "Baja",
+    "REACTIVATED": "Reactivación",
+    "AUTO_CANCELLED": "Baja automática por inactividad"
+  },
+  "RecordStatus": {
+    "ACTIVE": "Vigente",
+    "VOIDED": "Anulado"
+  },
+  "MovementType": {
+    "INCOME": "Ingreso",
+    "EXPENSE": "Egreso"
+  },
+  "MovementOrigin": {
+    "MANUAL": "Manual",
+    "RENEWAL": "Renovación",
+    "IMPORT": "Importado del Excel"
+  },
+  "PaymentMethod": {
+    "CASH": "Efectivo",
+    "TRANSFER": "Transferencia",
+    "MERCADOPAGO": "MercadoPago",
+    "DEBIT": "Débito",
+    "CREDIT": "Crédito",
+    "OTHER": "Otro"
+  },
+  "AttendanceSource": {
+    "WEB": "Recepción",
+    "MANUAL": "Carga manual"
+  },
+  "LeadStage": {
+    "FIRST_MESSAGE": "Primer mensaje",
+    "SECOND_MESSAGE": "Segundo mensaje",
+    "TRIAL_ATTENDED": "Vino a clase",
+    "SIGNED_UP": "Se anotó",
+    "LOST": "Perdido",
+    "NOT_INTERESTED": "No le interesó"
+  },
+  "LeadChannel": {
+    "WALK_IN": "Presencial / Vio el local",
+    "WHATSAPP": "WhatsApp",
+    "SOCIAL_MEDIA": "Redes sociales",
+    "REFERRAL": "Recomendación / Referido",
+    "OTHER": "Otro"
+  },
+  "NutritionBilling": {
+    "GYM": "Lo cobra el gimnasio",
+    "NUTRITIONIST": "Lo cobra la nutricionista"
+  },
+  "MethodologyVersion": {
+    "LEGACY_V3_7": "Excel v3.7 (referencia)",
+    "V1": "Sistema nuevo (V1)"
+  },
+  "SnapshotStage": {
+    "PRELIMINARY": "Cierre preliminar",
+    "FINAL": "Cierre definitivo",
+    "REFERENCE": "Foto del Excel (referencia)"
+  },
+  "AuditAction": {
+    "CREATE": "Alta",
+    "UPDATE": "Edición",
+    "VOID": "Anulación",
+    "DELETE": "Eliminación",
+    "CANCEL": "Baja",
+    "REACTIVATE": "Reactivación",
+    "LOGIN": "Inicio de sesión",
+    "PASSWORD_CHANGE": "Cambio de contraseña",
+    "CLOSE_PERIOD": "Cierre de mes",
+    "PUBLISH": "Publicación"
+  },
+  "AuditEntity": {
+    "USER": "Usuario",
+    "PLAN": "Plan",
+    "MEMBER": "Socio",
+    "MEMBERSHIP": "Renovación",
+    "CASH_MOVEMENT": "Movimiento de caja",
+    "CASH_CATEGORY": "Categoría de caja",
+    "ATTENDANCE": "Asistencia",
+    "LEAD": "Lead",
+    "SETTING": "Parámetro",
+    "METRIC_SNAPSHOT": "Cierre de métricas",
+    "STAFF_MEMBER": "Persona del equipo",
+    "INCENTIVE_PERIOD": "Objetivos y bonos del mes"
+  },
+  "IncentivePeriodStatus": {
+    "DRAFT": "Sin publicar",
+    "PUBLISHED": "Publicado",
+    "CLOSED": "Cerrado"
+  },
+  "WhatsappTemplate": {
+    "vencimiento": "Hola {nombre}! Te escribo de Limit Breaker. Tu cuota esta por vencer. Te esperamos para seguir sumando entrenos.",
+    "reactivacion": "Hola {nombre}! Como andas? Te extranamos en Limit Breaker. Cuando arrancas de nuevo? Avisanos y reorganizamos rutina.",
+    "ausente": "Hola {nombre}! Hace unos dias no te vemos por el gym. Todo bien? Si necesitas reorganizar entrenos, avisanos y lo armamos juntos.",
+    "inasistencia_alta": "Hola {nombre}! Notamos que hace mas de 2 semanas no venis. Te escribo para ver como vas y como podemos ayudarte a volver al ritmo.",
+    "inasistencia_critica": "Hola {nombre}! Hace mas de 20 dias no te vemos por Limit Breaker. Queremos ayudarte a retomar - decime que dia te queda comodo y armamos plan."
+  }
+}

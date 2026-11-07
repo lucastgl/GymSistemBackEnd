@@ -1,0 +1,20 @@
+# Dependencias y compilados
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Variables de entorno: nunca se versionan (salvo el ejemplo)
+.env*
+!.env.example
+
+# Contraseñas temporales de los usuarios iniciales (ver ../sql/CREDENCIALES_INICIALES.md)
+CREDENCIALES_INICIALES.md
+
+# Logs y varios
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

@@ -1,0 +1,539 @@
+// Limit Breaker · esquema de base de datos (fuente única).
+// Ver docs/04-modelo-de-datos.md. Complementos fuera de Prisma (índices parciales,
+// trigram, secuencias, CHECKs, trigger de auditoría, RLS) en sql/01b_complementos.sql.
+// Las tablas se crean ejecutando los scripts de sql/ a mano en Supabase: este proyecto
+// NO usa `prisma migrate deploy`; solo `prisma generate`.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // pooler Supabase (puerto 6543, ?pgbouncer=true)
+  directUrl = env("DIRECT_URL") // conexión directa (5432), solo para herramientas de Prisma
+}
+
+enum Role {
+  ADMIN
+  RECEPCIONISTA
+  NUTRICIONISTA
+  ALUMNO
+}
+
+enum MemberStatus {
+  ACTIVE
+  CANCELLED
+}
+
+enum MemberStatusEventType {
+  ACTIVATED
+  CANCELLED
+  REACTIVATED
+  AUTO_CANCELLED
+}
+
+enum RecordStatus {
+  ACTIVE
+  VOIDED
+}
+
+enum MovementType {
+  INCOME
+  EXPENSE
+}
+
+enum MovementOrigin {
+  MANUAL
+  RENEWAL
+  IMPORT
+}
+
+enum PaymentMethod {
+  CASH
+  TRANSFER
+  MERCADOPAGO
+  DEBIT
+  CREDIT
+  OTHER
+}
+
+enum AttendanceSource {
+  WEB
+  MANUAL
+}
+
+enum LeadStage {
+  FIRST_MESSAGE
+  SECOND_MESSAGE
+  TRIAL_ATTENDED
+  SIGNED_UP
+  LOST
+  NOT_INTERESTED
+}
+
+enum LeadChannel {
+  WALK_IN
+  WHATSAPP
+  SOCIAL_MEDIA
+  REFERRAL
+  OTHER
+}
+
+enum NutritionBilling {
+  GYM
+  NUTRITIONIST
+}
+
+enum MethodologyVersion {
+  LEGACY_V3_7
+  V1
+}
+
+enum SnapshotSource {
+  IMPORT
+  AUTO
+  MANUAL
+}
+
+enum SnapshotStage {
+  PRELIMINARY
+  FINAL
+  REFERENCE
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  VOID
+  DELETE
+  CANCEL
+  REACTIVATE
+  LOGIN
+  PASSWORD_CHANGE
+  CLOSE_PERIOD
+  PUBLISH
+}
+
+enum AuditEntity {
+  USER
+  PLAN
+  MEMBER
+  MEMBERSHIP
+  CASH_MOVEMENT
+  CASH_CATEGORY
+  ATTENDANCE
+  LEAD
+  SETTING
+  METRIC_SNAPSHOT
+  STAFF_MEMBER
+  INCENTIVE_PERIOD
+}
+
+// Estado de un mes de objetivos y bonos. DRAFT existe solo en la API (mes sin publicar).
+enum IncentivePeriodStatus {
+  PUBLISHED
+  CLOSED
+}
+
+// ───────────────────────── Seguridad ─────────────────────────
+
+model User {
+  id                 String         @id @default(uuid()) @db.Uuid
+  email              String         @unique // siempre en minúsculas (lo garantiza la app)
+  passwordHash       String         @map("password_hash") // argon2id PHC
+  fullName           String         @map("full_name")
+  role               Role
+  isActive           Boolean        @default(true) @map("is_active")
+  mustChangePassword Boolean        @default(true) @map("must_change_password")
+  lastLoginAt        DateTime?      @map("last_login_at") @db.Timestamptz(6)
+  createdAt          DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  refreshTokens      RefreshToken[]
+  auditLogs          AuditLog[]
+  staffMember        StaffMember?
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique @map("token_hash") // sha256 del token
+  familyId  String    @map("family_id") @db.Uuid
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
+  userAgent String?   @map("user_agent")
+  ip        String?
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([userId, revokedAt])
+  @@index([familyId])
+  @@map("refresh_tokens")
+}
+
+// ───────────────────────── Catálogos ─────────────────────────
+
+model Plan {
+  id                  String           @id @default(uuid()) @db.Uuid
+  code                String           @unique
+  name                String           @unique
+  priceArs            Decimal          @map("price_ars") @db.Decimal(12, 2)
+  enrollmentFeeArs    Decimal          @default(0) @map("enrollment_fee_ars") @db.Decimal(12, 2)
+  durationDays        Int              @default(30) @map("duration_days")
+  requiresAdvance     Boolean          @default(false) @map("requires_advance")
+  advanceInstallments Int              @default(0) @map("advance_installments")
+  benefits            String?
+  nutritionBilling    NutritionBilling @default(NUTRITIONIST) @map("nutrition_billing")
+  isActive            Boolean          @default(true) @map("is_active")
+  notes               String?
+  sortOrder           Int              @default(0) @map("sort_order")
+  createdAt           DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  members             Member[]
+  memberships         Membership[]
+
+  @@map("plans")
+}
+
+model CashCategory {
+  id        String         @id @default(uuid()) @db.Uuid
+  type      MovementType
+  name      String
+  isActive  Boolean        @default(true) @map("is_active")
+  isSystem  Boolean        @default(false) @map("is_system")
+  notes     String?
+  sortOrder Int            @default(0) @map("sort_order")
+  createdAt DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  movements CashMovement[]
+
+  @@unique([type, name])
+  @@map("cash_categories")
+}
+
+model Setting {
+  key         String   @id
+  value       Json
+  valueType   String   @map("value_type") // number | string | json | array
+  group       String
+  label       String
+  description String?
+  updatedById String?  @map("updated_by") @db.Uuid
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("settings")
+}
+
+// ───────────────────────── Socios ─────────────────────────
+
+model Member {
+  id                 String              @id @default(uuid()) @db.Uuid
+  legacyCode         String              @unique @map("legacy_code") // LB###
+  firstName          String              @map("first_name")
+  lastName           String              @map("last_name")
+  searchName         String              @map("search_name") // minúsculas, sin acentos; mantenido por la app
+  phoneRaw           String?             @map("phone_raw")
+  phoneE164          String?             @map("phone_e164")
+  phoneNeedsReview   Boolean             @default(false) @map("phone_needs_review")
+  email              String?
+  joinedAt           DateTime            @map("joined_at") @db.Date
+  status             MemberStatus        @default(ACTIVE)
+  currentPlanId      String?             @map("current_plan_id") @db.Uuid
+  currentPlan        Plan?               @relation(fields: [currentPlanId], references: [id])
+  lastRenewalAt      DateTime?           @map("last_renewal_at") @db.Date
+  expiresAt          DateTime?           @map("expires_at") @db.Date
+  cancelledAt        DateTime?           @map("cancelled_at") @db.Date
+  cancellationReason String?             @map("cancellation_reason")
+  acquisitionSource  String?             @map("acquisition_source")
+  notes              String?
+  soldByStaffId      String?             @map("sold_by_staff_id") @db.Uuid // quién cerró la venta (Fase 4)
+  soldByStaff        StaffMember?        @relation(fields: [soldByStaffId], references: [id])
+  deletedAt          DateTime?           @map("deleted_at") @db.Timestamptz(6)
+  createdById        String?             @map("created_by") @db.Uuid
+  updatedById        String?             @map("updated_by") @db.Uuid
+  createdAt          DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+  statusEvents       MemberStatusEvent[]
+  memberships        Membership[]
+  attendances        Attendance[]
+  cashMovements      CashMovement[]
+  leads              Lead[]
+
+  @@index([status, expiresAt])
+  @@index([lastName, firstName])
+  @@index([soldByStaffId])
+  @@map("members")
+}
+
+model MemberStatusEvent {
+  id          String                @id @default(uuid()) @db.Uuid
+  memberId    String                @map("member_id") @db.Uuid
+  member      Member                @relation(fields: [memberId], references: [id])
+  type        MemberStatusEventType
+  effectiveOn DateTime              @map("effective_on") @db.Date
+  reason      String?
+  createdById String?               @map("created_by") @db.Uuid // null = sistema / importación
+  createdAt   DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([memberId, effectiveOn])
+  @@index([type, effectiveOn])
+  @@map("member_status_events")
+}
+
+// ───────────────────────── Renovaciones y caja ─────────────────────────
+
+model Membership {
+  id             String       @id @default(uuid()) @db.Uuid
+  legacyCode     String?      @unique @map("legacy_code") // P####
+  memberId       String       @map("member_id") @db.Uuid
+  member         Member       @relation(fields: [memberId], references: [id])
+  planId         String?      @map("plan_id") @db.Uuid
+  plan           Plan?        @relation(fields: [planId], references: [id])
+  planName       String       @map("plan_name")
+  startsOn       DateTime     @map("starts_on") @db.Date
+  expiresOn      DateTime     @map("expires_on") @db.Date
+  amountTotal    Decimal      @map("amount_total") @db.Decimal(12, 2)
+  cashMovementId String       @unique @map("cash_movement_id") @db.Uuid
+  cashMovement   CashMovement @relation(fields: [cashMovementId], references: [id])
+  status         RecordStatus @default(ACTIVE)
+  voidedAt       DateTime?    @map("voided_at") @db.Timestamptz(6)
+  voidedById     String?      @map("voided_by") @db.Uuid
+  voidReason     String?      @map("void_reason")
+  notes          String?
+  createdById    String?      @map("created_by") @db.Uuid
+  updatedById    String?      @map("updated_by") @db.Uuid
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([memberId, startsOn(sort: Desc)])
+  @@index([expiresOn])
+  @@index([startsOn, status])
+  @@map("memberships")
+}
+
+model CashMovement {
+  id          String              @id @default(uuid()) @db.Uuid
+  legacyCode  String?             @unique @map("legacy_code") // MV#### / M#### / P####
+  occurredOn  DateTime            @map("occurred_on") @db.Date
+  type        MovementType
+  categoryId  String              @map("category_id") @db.Uuid
+  category    CashCategory        @relation(fields: [categoryId], references: [id])
+  subcategory String?
+  amount      Decimal             @db.Decimal(12, 2)
+  description String?
+  memberId    String?             @map("member_id") @db.Uuid
+  member      Member?             @relation(fields: [memberId], references: [id])
+  origin      MovementOrigin      @default(MANUAL)
+  status      RecordStatus        @default(ACTIVE)
+  voidedAt    DateTime?           @map("voided_at") @db.Timestamptz(6)
+  voidedById  String?             @map("voided_by") @db.Uuid
+  voidReason  String?             @map("void_reason")
+  createdById String?             @map("created_by") @db.Uuid
+  updatedById String?             @map("updated_by") @db.Uuid
+  createdAt   DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+  splits      CashMovementSplit[]
+  membership  Membership?
+
+  @@index([occurredOn(sort: Desc), id])
+  @@index([type, occurredOn])
+  @@index([categoryId])
+  @@index([memberId])
+  @@index([status])
+  @@index([createdById])
+  @@map("cash_movements")
+}
+
+model CashMovementSplit {
+  id             String        @id @default(uuid()) @db.Uuid
+  cashMovementId String        @map("cash_movement_id") @db.Uuid
+  cashMovement   CashMovement  @relation(fields: [cashMovementId], references: [id], onDelete: Cascade)
+  method         PaymentMethod
+  amount         Decimal       @db.Decimal(12, 2)
+  sortOrder      Int           @default(0) @map("sort_order")
+
+  @@index([method])
+  @@index([cashMovementId])
+  @@map("cash_movement_splits")
+}
+
+// ───────────────────────── Asistencias ─────────────────────────
+
+model Attendance {
+  id          String           @id @default(uuid()) @db.Uuid
+  memberId    String           @map("member_id") @db.Uuid
+  member      Member           @relation(fields: [memberId], references: [id])
+  checkedInAt DateTime         @map("checked_in_at") @db.Timestamptz(6)
+  checkedInOn DateTime         @map("checked_in_on") @db.Date // fecha calendario BA de checkedInAt; la mantiene la app
+  source      AttendanceSource @default(WEB)
+  notes       String?
+  status      RecordStatus     @default(ACTIVE)
+  voidedAt    DateTime?        @map("voided_at") @db.Timestamptz(6)
+  voidedById  String?          @map("voided_by") @db.Uuid
+  voidReason  String?          @map("void_reason")
+  createdById String?          @map("created_by") @db.Uuid
+  updatedById String?          @map("updated_by") @db.Uuid
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([memberId, checkedInOn(sort: Desc)])
+  @@index([checkedInOn])
+  @@map("attendances")
+}
+
+// ───────────────────────── Leads ─────────────────────────
+
+model Lead {
+  id              String      @id @default(uuid()) @db.Uuid
+  legacyCode      String?     @unique @map("legacy_code") // L####
+  contactedOn     DateTime    @map("contacted_on") @db.Date
+  firstName       String      @map("first_name")
+  lastName        String?     @map("last_name")
+  phoneRaw        String?     @map("phone_raw")
+  phoneE164       String?     @map("phone_e164")
+  channel         LeadChannel @default(OTHER)
+  channelDetail   String?     @map("channel_detail")
+  trialClassOn    DateTime?   @map("trial_class_on") @db.Date
+  trialClassTime  DateTime?   @map("trial_class_time") @db.Time(0)
+  stage           LeadStage   @default(FIRST_MESSAGE)
+  handledByUserId String?     @map("handled_by_user_id") @db.Uuid
+  handledByName   String?     @map("handled_by_name")
+  lostReason      String?     @map("lost_reason")
+  notes           String?
+  memberId        String?     @map("member_id") @db.Uuid
+  member          Member?     @relation(fields: [memberId], references: [id])
+  deletedAt       DateTime?   @map("deleted_at") @db.Timestamptz(6)
+  createdById     String?     @map("created_by") @db.Uuid
+  updatedById     String?     @map("updated_by") @db.Uuid
+  createdAt       DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([stage])
+  @@index([contactedOn(sort: Desc)])
+  @@map("leads")
+}
+
+// ───────────────────────── Métricas ─────────────────────────
+
+model MetricSnapshot {
+  id             String         @id @default(uuid()) @db.Uuid
+  period         String         @db.Char(7) // YYYY-MM
+  closedAt       DateTime       @map("closed_at") @db.Timestamptz(6)
+  closedByUserId String?        @map("closed_by_user_id") @db.Uuid
+  closedByName   String?        @map("closed_by_name")
+  source         SnapshotSource
+  stage          SnapshotStage
+  isCurrent      Boolean        @default(true) @map("is_current")
+  supersededAt   DateTime?      @map("superseded_at") @db.Timestamptz(6)
+  legacyLabel    String?        @map("legacy_label")
+  notes          String?
+  values         MetricValue[]
+
+  @@index([period, closedAt(sort: Desc)])
+  @@map("metric_snapshots")
+}
+
+model MetricValue {
+  id                 String             @id @default(uuid()) @db.Uuid
+  snapshotId         String             @map("snapshot_id") @db.Uuid
+  snapshot           MetricSnapshot     @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  metricKey          String             @map("metric_key")
+  value              Decimal?           @db.Decimal(14, 4)
+  methodologyVersion MethodologyVersion @map("methodology_version")
+  isProvisional      Boolean            @default(false) @map("is_provisional")
+  computedAt         DateTime           @default(now()) @map("computed_at") @db.Timestamptz(6)
+
+  @@unique([snapshotId, metricKey])
+  @@map("metric_values")
+}
+
+// ───────────────────────── Objetivos y bonos (Fase 4) ─────────────────────────
+
+// Personas del equipo que cierran ventas y cobran bonos. Puede o no tener usuario
+// (Aileen no tiene). Giovanni y Lucas figuran para que la atribución sea veraz, sin bono.
+model StaffMember {
+  id              String   @id @default(uuid()) @db.Uuid
+  displayName     String   @unique @map("display_name")
+  userId          String?  @unique @map("user_id") @db.Uuid
+  user            User?    @relation(fields: [userId], references: [id])
+  isBonusEligible Boolean  @default(false) @map("is_bonus_eligible")
+  isActive        Boolean  @default(true) @map("is_active")
+  sortOrder       Int      @default(0) @map("sort_order")
+  notes           String?
+  createdById     String?  @map("created_by") @db.Uuid
+  updatedById     String?  @map("updated_by") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  soldMembers     Member[]
+
+  @@map("staff_members")
+}
+
+// Objetivo y montos de un mes, congelados al publicar (docs/03 §8). Las cifras clave van
+// como columnas; el detalle completo del plan y del resultado, en JSON.
+model IncentivePeriod {
+  id                    String                @id @default(uuid()) @db.Uuid
+  period                String                @unique @db.Char(7) // YYYY-MM
+  status                IncentivePeriodStatus @default(PUBLISHED)
+  formulaVersion        String                @default("1") @map("formula_version")
+  newMembersTarget      Int                   @map("new_members_target")
+  renewalRateTargetPct  Decimal               @map("renewal_rate_target_pct") @db.Decimal(7, 4)
+  expectedExpirations   Int                   @map("expected_expirations")
+  renewalsTarget        Int                   @map("renewals_target")
+  bonusPerNewMemberArs  Decimal               @map("bonus_per_new_member_ars") @db.Decimal(12, 2)
+  teamBonusPerPersonArs Decimal               @map("team_bonus_per_person_ars") @db.Decimal(12, 2)
+  expenseReferenceArs   Decimal?              @map("expense_reference_ars") @db.Decimal(12, 2)
+  plan                  Json // IncentivePlan congelado (docs/05)
+  results               Json? // IncentiveProgress final, al cerrar
+  notes                 String?
+  publishedAt           DateTime              @map("published_at") @db.Timestamptz(6)
+  publishedById         String?               @map("published_by") @db.Uuid
+  closedAt              DateTime?             @map("closed_at") @db.Timestamptz(6)
+  closedById            String?               @map("closed_by") @db.Uuid
+  createdAt             DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([status])
+  @@map("incentive_periods")
+}
+
+// ───────────────────────── Auditoría y procesos ─────────────────────────
+
+model AuditLog {
+  id                String      @id @default(uuid()) @db.Uuid
+  occurredAt        DateTime    @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  userId            String?     @map("user_id") @db.Uuid
+  user              User?       @relation(fields: [userId], references: [id])
+  actorLabel        String      @map("actor_label")
+  entity            AuditEntity
+  entityId          String      @map("entity_id") @db.Uuid
+  entityLabel       String      @map("entity_label")
+  action            AuditAction
+  before            Json?
+  after             Json?
+  changedFields     String[]    @map("changed_fields")
+  passwordConfirmed Boolean     @default(false) @map("password_confirmed")
+  requestId         String?     @map("request_id") @db.Uuid
+  ip                String?
+  userAgent         String?     @map("user_agent")
+
+  @@index([occurredAt(sort: Desc)])
+  @@index([entity, entityId])
+  @@index([userId])
+  @@map("audit_logs")
+}
+
+model JobRun {
+  id         String    @id @default(uuid()) @db.Uuid
+  job        String // AUTO_CANCEL_MEMBERS | CLOSE_PERIOD_PRELIMINARY | CLOSE_PERIOD_FINAL | CLOSE_PERIOD_CATCHUP
+  startedAt  DateTime  @default(now()) @map("started_at") @db.Timestamptz(6)
+  finishedAt DateTime? @map("finished_at") @db.Timestamptz(6)
+  status     String // RUNNING | OK | ERROR
+  result     Json?
+  error      String?
+
+  @@index([job, startedAt(sort: Desc)])
+  @@map("job_runs")
+}
