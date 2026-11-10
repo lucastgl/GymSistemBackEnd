@@ -74,13 +74,14 @@ La base **no** la crea este backend. Se crea ejecutando a mano, en orden, los sc
 
 | Comando | Qué hace |
 |---|---|
-| `npm run build` | Compila a `dist/` (`nest build`). |
+| `npm run build` | Valida `contract/` (`contract:check`) y compila a `dist/` (`nest build`). Es el build que corre Vercel. |
 | `npm start` | Levanta `dist/main.js` (carga `.env` si existe). |
 | `npm run start:dev` | Modo desarrollo con recarga. |
 | `npm run lint` | ESLint, incluidas las reglas de límites de capa. Falla ante cualquier violación. |
 | `npm test` | Tests unitarios del dominio, de casos de uso (repositorios en memoria) y de arquitectura (capas y contrato). |
 | `npm run test:integration` | Levanta PostgreSQL 16 en Docker, aplica `../sql`, corre las pruebas e2e y baja el contenedor. |
 | `npm run contract:sync` | Copia `../docs/05-api-openapi.yaml` y `../docs/06-etiquetas.json` a `contract/`. |
+| `npm run contract:check` | Falla si falta o está roto `contract/labels.json` o `contract/openapi.yaml`. |
 | `npm run prisma:generate` | Regenera el cliente de Prisma. |
 
 ## Contrato y Swagger
@@ -89,6 +90,7 @@ La base **no** la crea este backend. Se crea ejecutando a mano, en orden, los sc
 - Swagger UI sirve ese YAML tal cual en **`/api/docs`** (y el JSON en `/api/docs-json`). No se genera desde decoradores, así que lo que se ve es exactamente el contrato acordado.
 - `test/architecture/contract.spec.ts` compara el contrato con los controllers: que estén las 73 operaciones, sin rutas extra, con `@Roles` igual a `x-roles` y el mismo código de éxito.
 - Las plantillas de WhatsApp (`GET /members/{id}/whatsapp-link`) salen de `contract/labels.json`.
+- **`contract/` va commiteado.** En Vercel no existe `../docs`, así que `contract:sync` no puede correr ahí: el deploy usa la copia del repo. `src/infrastructure/contract/contract-files.ts` la lee con rutas literales relativas al código para que Vercel la incluya en la función; no las conviertas en rutas dinámicas.
 
 ## Arquitectura
 

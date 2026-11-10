@@ -10,7 +10,7 @@
   "scripts": {
     "postinstall": "prisma generate",
     "prisma:generate": "prisma generate",
-    "build": "nest build",
+    "build": "npm run contract:check && nest build",
     "start": "node dist/main",
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main",
@@ -18,7 +18,8 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:integration": "node scripts/integration.js all",
-    "contract:sync": "node scripts/sync-contract.js"
+    "contract:sync": "node scripts/sync-contract.js",
+    "contract:check": "node scripts/check-contract.js"
   },
   "dependencies": {
     "@nestjs/common": "11.2.8",
